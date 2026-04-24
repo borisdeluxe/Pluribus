@@ -1,0 +1,283 @@
+# Verbindliche Security-Standards für KI-Agenten
+# Format: YAML 1.2 | Encoding: UTF-8
+# Zweck: Wissensbasis und Prüfkriterien für Code-Review- und Code-Generierungs-Agenten
+
+meta:
+  document_version: "1.0"
+  last_updated: "2026-04-24"
+  language: "de"
+  license: "CC-BY-SA-4.0 (Inhalt), MIT (Schema)"
+
+# ==========================================================================
+# PFLICHT-STANDARDS — Agenten MÜSSEN diese einhalten und gegen sie prüfen
+# ==========================================================================
+
+standards:
+
+  - id: owasp-top-10-web
+    name: "OWASP Top 10"
+    version: "2025"
+    released: "2025-11-06"
+    authority: "OWASP Foundation"
+    scope: "Web-Applikationen, allgemeine App-Security-Awareness"
+    priority: required
+    source_url: "https://owasp.org/Top10/2025/"
+    repo_url: "https://github.com/OWASP/Top10"
+    raw_url: "https://raw.githubusercontent.com/OWASP/Top10/master/2025/docs/"
+    format: [markdown, pdf]
+    categories:
+      - "A01:2025 Broken Access Control (inkl. SSRF)"
+      - "A02:2025 Security Misconfiguration"
+      - "A03:2025 Software Supply Chain Failures"
+      - "A04:2025 Cryptographic Failures"
+      - "A05:2025 Injection"
+      - "A06:2025 Insecure Design"
+      - "A07:2025 Authentication Failures"
+      - "A08:2025 Software and Data Integrity Failures"
+      - "A09:2025 Logging and Alerting Failures"
+      - "A10:2025 Mishandling of Exceptional Conditions"
+
+  - id: owasp-asvs
+    name: "OWASP Application Security Verification Standard"
+    version: "5.0.0"
+    released: "2025-05-30"
+    authority: "OWASP Foundation"
+    scope: "Testbare Security-Requirements für Webanwendungen und Webservices"
+    priority: required
+    levels: [L1, L2, L3]
+    requirement_count: 350
+    chapter_count: 17
+    source_url: "https://owasp.org/www-project-application-security-verification-standard/"
+    repo_url: "https://github.com/OWASP/ASVS"
+    raw_url: "https://github.com/OWASP/ASVS/tree/v5.0.0/5.0/en"
+    machine_readable:
+      csv: "https://github.com/OWASP/ASVS/releases/download/v5.0.0/OWASP_Application_Security_Verification_Standard_5.0.0_en.csv"
+      pdf: "https://github.com/OWASP/ASVS/releases/download/v5.0.0/OWASP_Application_Security_Verification_Standard_5.0.0_en.pdf"
+    format: [csv, markdown, pdf, docx]
+    usage: "Primäre Requirements-Quelle für Code-Review. IDs im Format <chapter>.<section>.<requirement>"
+
+  - id: owasp-llm-top-10
+    name: "OWASP Top 10 for Large Language Model Applications"
+    version: "2025 (v2.0)"
+    released: "2024-11-17"
+    authority: "OWASP GenAI Security Project"
+    scope: "Security-Risiken in LLM-Applikationen"
+    priority: required
+    applies_when: "Code interagiert mit LLMs, RAG-Systemen oder Prompt-Pipelines"
+    source_url: "https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/"
+    hub_url: "https://genai.owasp.org/llm-top-10/"
+    raw_url: "https://owasp.org/www-project-top-10-for-large-language-model-applications/assets/PDF/OWASP-Top-10-for-LLMs-v2025.pdf"
+    format: [pdf, markdown]
+    categories:
+      - "LLM01:2025 Prompt Injection"
+      - "LLM02:2025 Sensitive Information Disclosure"
+      - "LLM03:2025 Supply Chain"
+      - "LLM04:2025 Data and Model Poisoning"
+      - "LLM05:2025 Improper Output Handling"
+      - "LLM06:2025 Excessive Agency"
+      - "LLM07:2025 System Prompt Leakage"
+      - "LLM08:2025 Vector and Embedding Weaknesses"
+      - "LLM09:2025 Misinformation"
+      - "LLM10:2025 Unbounded Consumption"
+
+  - id: owasp-agentic-top-10
+    name: "OWASP Top 10 for Agentic Applications"
+    version: "2026"
+    released: "2025-12-09"
+    authority: "OWASP GenAI Security Project"
+    scope: "Autonome und agentische KI-Systeme"
+    priority: required
+    applies_when: "Code implementiert Multi-Agent-Systeme, Tool-Use oder autonome Workflows"
+    source_url: "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/"
+    hub_url: "https://genai.owasp.org/"
+
+  - id: owasp-api-top-10
+    name: "OWASP API Security Top 10"
+    version: "2023"
+    released: "2023-06-05"
+    authority: "OWASP Foundation"
+    scope: "REST- und GraphQL-APIs"
+    priority: required
+    applies_when: "Code exponiert oder konsumiert APIs"
+    source_url: "https://owasp.org/API-Security/editions/2023/en/0x11-t10/"
+    repo_url: "https://github.com/OWASP/API-Security"
+    format: [markdown, pdf]
+
+  - id: owasp-cheat-sheets
+    name: "OWASP Cheat Sheet Series"
+    version: "rolling"
+    authority: "OWASP Foundation"
+    scope: "Konkrete Fix-Empfehlungen zu Security-Themen"
+    priority: recommended
+    usage: "Primäre Quelle für Remediation-Vorschläge"
+    source_url: "https://cheatsheetseries.owasp.org/"
+    repo_url: "https://github.com/OWASP/CheatSheetSeries"
+    raw_url: "https://raw.githubusercontent.com/OWASP/CheatSheetSeries/master/cheatsheets/"
+    format: [markdown]
+
+  - id: cwe
+    name: "Common Weakness Enumeration"
+    version: "4.17"
+    authority: "MITRE Corporation"
+    scope: "Atomare Taxonomie von Software-Weaknesses mit eindeutigen IDs"
+    priority: required
+    usage: "Jedes Finding MUSS eine CWE-ID tragen"
+    source_url: "https://cwe.mitre.org/"
+    downloads_url: "https://cwe.mitre.org/data/downloads.html"
+    machine_readable:
+      xml: "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
+      csv: "https://cwe.mitre.org/data/csv/cwec_latest.csv.zip"
+      json: "https://github.com/CWE-CAPEC/REST-API-wg/blob/main/schemas/"
+    format: [xml, csv, json]
+
+  - id: cwe-top-25
+    name: "CWE Top 25 Most Dangerous Software Weaknesses"
+    version: "2024"
+    authority: "MITRE Corporation / CISA"
+    scope: "Die 25 kritischsten Weakness-Klassen"
+    priority: required
+    source_url: "https://cwe.mitre.org/top25/"
+    format: [html, csv]
+
+  - id: nist-ssdf
+    name: "NIST Secure Software Development Framework (SSDF)"
+    version: "1.1"
+    draft_version: "1.2 (SP 800-218 Rev. 1, Public Draft seit 2025-12-17)"
+    authority: "NIST (U.S. Department of Commerce)"
+    scope: "Prozess- und Praktikenrahmen für sicheres SDLC"
+    priority: recommended
+    source_url: "https://csrc.nist.gov/projects/ssdf"
+    publication_url: "https://csrc.nist.gov/pubs/sp/800/218/final"
+    draft_url: "https://csrc.nist.gov/pubs/sp/800/218/r1/ipd"
+    pdf_url: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-218.pdf"
+    format: [pdf, xlsx]
+
+  - id: nist-ssdf-genai
+    name: "NIST SSDF Community Profile for Generative AI"
+    version: "SP 800-218A"
+    released: "2024-07-26"
+    authority: "NIST"
+    scope: "Erweiterung des SSDF um GenAI- und Dual-Use-Foundation-Model-Spezifika"
+    priority: required
+    applies_when: "Agent entwickelt oder integriert Generative-AI-Modelle"
+    source_url: "https://csrc.nist.gov/pubs/sp/800/218/a/final"
+    pdf_url: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-218A.pdf"
+    format: [pdf]
+
+  - id: slsa
+    name: "Supply-chain Levels for Software Artifacts (SLSA)"
+    version: "1.1"
+    authority: "OpenSSF (Open Source Security Foundation)"
+    scope: "Integrität von Build- und Supply-Chain-Prozessen"
+    priority: required
+    levels: [1, 2, 3]
+    source_url: "https://slsa.dev/spec/v1.1/"
+    repo_url: "https://github.com/slsa-framework/slsa"
+    format: [markdown, html]
+
+  - id: openssf-scorecard
+    name: "OpenSSF Scorecard"
+    version: "rolling"
+    authority: "OpenSSF"
+    scope: "Automatisierte Security-Health-Checks für Open-Source-Repositories"
+    priority: recommended
+    source_url: "https://scorecard.dev/"
+    repo_url: "https://github.com/ossf/scorecard"
+    format: [json, sarif]
+    usage: "Pflichtcheck für jede externe Dependency, die der Agent aufnimmt oder empfiehlt"
+
+  - id: sigstore
+    name: "Sigstore (Cosign, Rekor, Fulcio)"
+    authority: "OpenSSF / Linux Foundation"
+    scope: "Signierung und Transparency-Log für Software-Artefakte"
+    priority: recommended
+    source_url: "https://www.sigstore.dev/"
+    repo_url: "https://github.com/sigstore"
+
+# ==========================================================================
+# COMPLIANCE-KONTEXT — relevant für EU/DE-Projekte
+# ==========================================================================
+
+compliance_context:
+
+  - id: eu-cra
+    name: "EU Cyber Resilience Act"
+    regulation: "(EU) 2024/2847"
+    in_force_since: "2024-12-10"
+    full_application: "2027-12-11"
+    scope: "Produkte mit digitalen Elementen, die in der EU in Verkehr gebracht werden"
+    priority: required
+    source_url: "https://eur-lex.europa.eu/eli/reg/2024/2847/oj"
+    requirements_summary: "Security-by-Design, SBOM, Schwachstellen-Handling, 24h-Meldepflicht"
+
+  - id: eu-nis2
+    name: "EU NIS2 Directive"
+    regulation: "(EU) 2022/2555"
+    scope: "Cybersicherheitsanforderungen für wesentliche und wichtige Einrichtungen"
+    priority: context
+    source_url: "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"
+
+  - id: gdpr
+    name: "General Data Protection Regulation (DSGVO)"
+    regulation: "(EU) 2016/679"
+    scope: "Verarbeitung personenbezogener Daten"
+    priority: required
+    source_url: "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+
+  - id: bsi-grundschutz
+    name: "BSI IT-Grundschutz"
+    authority: "Bundesamt für Sicherheit in der Informationstechnik"
+    scope: "Deutscher De-facto-Standard für Informationssicherheit"
+    priority: context
+    source_url: "https://www.bsi.bund.de/DE/Themen/Unternehmen-und-Organisationen/Standards-und-Zertifizierung/IT-Grundschutz/it-grundschutz_node.html"
+
+# ==========================================================================
+# SCANNER-MAPPINGS — Tools mit maschinenlesbarem OWASP/CWE-Mapping
+# ==========================================================================
+
+scanners:
+
+  - id: semgrep
+    name: "Semgrep Registry"
+    rule_count: "4000+"
+    mappings: [owasp-top-10-2025, owasp-top-10-2021, cwe]
+    output_format: sarif
+    rules_url: "https://semgrep.dev/r"
+    repo_url: "https://github.com/semgrep/semgrep-rules"
+
+  - id: codeql
+    name: "GitHub CodeQL"
+    mappings: [cwe, owasp-top-10]
+    output_format: sarif
+    repo_url: "https://github.com/github/codeql"
+
+  - id: trivy
+    name: "Aqua Trivy"
+    scope: "Container, Dependencies, IaC, Secrets"
+    output_format: [json, sarif, cyclonedx]
+    repo_url: "https://github.com/aquasecurity/trivy"
+
+  - id: gitleaks
+    name: "Gitleaks"
+    scope: "Secrets in Git-History"
+    output_format: [json, sarif]
+    repo_url: "https://github.com/gitleaks/gitleaks"
+
+# ==========================================================================
+# AGENT-REGELN
+# ==========================================================================
+
+agent_rules:
+  prohibited_without_reference:
+    - "Security-Urteile ohne ASVS- oder CWE-Referenz"
+    - "Fix-Empfehlungen ohne Cheat-Sheet- oder CWE-Mitigation-Link"
+  required_on_every_finding:
+    - cwe_id
+    - owasp_category
+    - severity: [info, low, medium, high, critical]
+    - source_reference_url
+  update_cadence:
+    knowledge_base_refresh: "monatlich"
+    standard_version_check: "wöchentlich"
+    critical_advisory_check: "täglich"
+  version_pinning: "Jeder Review-Report MUSS die konkret verwendete Version jedes Standards ausweisen"

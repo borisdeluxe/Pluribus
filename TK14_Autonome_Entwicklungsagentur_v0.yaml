@@ -298,6 +298,91 @@ skills:
     5. Letzte Zeile: STATUS: READY_FOR_<next_agent> oder STATUS: RETURN_TO_<author>
 
 # -----------------------------------------------------------------------------
+# SECURITY-ARCHITEKTUR — Scanner + RAG + Version-Pinning
+# -----------------------------------------------------------------------------
+security_architecture:
+  overview: |
+    Der Security-Review basiert auf einer 4-Layer-Architektur, die LLM-Halluzinationen
+    minimiert und reproduzierbare, audit-fähige Reports ermöglicht.
+
+  layers:
+    - id: static_scanners
+      name: "Layer 1: Statische Scanner (Ground Truth)"
+      purpose: "Deterministische Findings mit automatischem CWE/OWASP-Mapping"
+      tools:
+        - id: semgrep
+          scope: "Code-Patterns, SAST"
+          output: sarif
+          rules: "OWASP Top 10, CWE Top 25"
+        - id: trivy
+          scope: "Dependencies, Container, IaC, Secrets"
+          output: [sarif, cyclonedx]
+        - id: gitleaks
+          scope: "Secrets in Git-History"
+          output: sarif
+      status: to_be_installed_phase_1
+      notes: "Scanner-Output ist Ground Truth. LLM evaluiert nur, erfindet keine Findings."
+
+    - id: rag_knowledgebase
+      name: "Layer 2: RAG-Knowledgebase"
+      purpose: "Kontextbezogene Requirements und Fix-Empfehlungen"
+      storage: vector_db
+      sources:
+        - id: owasp-asvs
+          version: "5.0.0"
+          format: csv
+          usage: "Primäre Requirements-Quelle"
+        - id: owasp-top-10
+          version: "2025"
+          format: markdown
+        - id: owasp-llm-top-10
+          version: "2025"
+          applies_when: "LLM-Code"
+        - id: owasp-agentic-top-10
+          version: "2026"
+          applies_when: "Multi-Agent-Code"
+        - id: owasp-cheat-sheets
+          version: rolling
+          usage: "Fix-Empfehlungen"
+        - id: cwe-top-25
+          version: "2024"
+      status: to_be_created_phase_1
+
+    - id: version_pinning
+      name: "Layer 3: Version-Pinning + Update-Prozess"
+      purpose: "Reproduzierbarkeit und Audit-Trail"
+      update_cadence:
+        knowledge_base_refresh: monthly
+        standard_version_check: weekly
+        critical_advisory_check: daily
+      implementation: |
+        Cronjob prüft GitHub API / RSS auf neue Versionen:
+        - OWASP/ASVS, OWASP/Top10, genai.owasp.org
+        - MITRE CWE, NIST CSRC
+        Bei neuer Version: automatisches Re-Indexing der Vektor-DB.
+      status: to_be_created_phase_1
+
+    - id: agent_policy
+      name: "Layer 4: Agenten-Policy als Code"
+      purpose: "Explizite Versions-Referenz in jedem Review"
+      prompt_template: |
+        Du prüfst gegen:
+        - OWASP Top 10:2025
+        - ASVS 5.0.0 Level {L1|L2|L3}
+        - OWASP LLM Top 10:2025 (wenn LLM-Code)
+        - OWASP Agentic Top 10:2026 (wenn Agent-Code)
+        - CWE Top 25:2024
+      report_requirements:
+        - "Jedes Finding MUSS CWE-ID haben"
+        - "Jedes Finding MUSS OWASP-Kategorie haben"
+        - "Jeder Report MUSS verwendete Standard-Versionen ausweisen"
+        - "Fix-Empfehlungen MÜSSEN Cheat-Sheet-Referenz haben"
+
+  references:
+    standards_file: "references/security-standards.yaml"
+    techdebt: "techdebt.md#td-001"
+
+# -----------------------------------------------------------------------------
 # OBSERVABILITY LAYER – BEOBACHTUNGS-AGENTEN
 # -----------------------------------------------------------------------------
 observability_agents:
