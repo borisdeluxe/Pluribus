@@ -75,7 +75,7 @@ Stored in `/opt/agency/.env`:
 - [x] Claude CLI (v2.1.119)
 - [x] Firewall (ufw: 22, 80, 443)
 - [x] SSH key for GitHub (agency@mutirada)
-- [x] DNS: agency.mutirada.com → 46.225.19.209
+- [x] DNS: monitor.mutirada.com → 46.225.19.209
 - [x] Clone falara repo (bare: /opt/agency/repos/falara.git, 3.9MB)
 - [x] Clone falara-frontend repo (bare: /opt/agency/repos/falara-frontend.git, 4.7MB)
 

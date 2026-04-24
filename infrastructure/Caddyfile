@@ -1,5 +1,5 @@
 # Agency Monitor
-agency.mutirada.com {
+monitor.mutirada.com {
     # Static files
     root * /opt/agency/monitor/static
     file_server
