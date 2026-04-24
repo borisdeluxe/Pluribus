@@ -175,8 +175,9 @@ execution_agents:
     write_access: [".pipeline/<feature>/"]
     read_access: [repo_readonly]
     model: sonnet_4_5
-    skills: [review_runner]
+    skills: [code_review]
     gate_authority: true
+    notes: "Nutzt code-review Skill (nicht review-runner). Code-Review ist spezialisiert auf Diffs, Coverage, Regressions."
 
   - id: deploy_runner
     order: 7
@@ -189,6 +190,97 @@ execution_agents:
     isolated_user: true
     ssh_key_scope: "nur deploy.sh auf Prod-Server"
     notes: "Separater Linux-User, KEIN Write-Zugriff im Repo."
+
+# -----------------------------------------------------------------------------
+# SKILLS – WIEDERVERWENDBARE WORKFLOWS
+# -----------------------------------------------------------------------------
+skills:
+  overview: |
+    Skills sind strukturierte Workflows, die Agenten aufrufen können. Sie
+    definieren HOW ein Agent seine Aufgabe erledigt, während die Agent-Rolle
+    definiert WHAT der Agent tut. Skills sind rigid (exakt befolgen) oder
+    flexible (Prinzipien adaptieren).
+
+  location: ".claude/skills/"
+
+  defined_skills:
+    - id: review-runner
+      type: rigid
+      used_by: [architect_planner, qa_validator]
+      purpose: |
+        Review von Design-Dokumenten und Specs. Sendet Dokument an zwei
+        Claude-Instanzen mit unterschiedlichen Perspektiven (Conservative,
+        Pragmatic), evaluiert Feedback als Author-Judge, produziert
+        autonome Gate-Entscheidung (PASS / FIX_AND_PASS / FAIL).
+      artifacts:
+        - ".claude/skills/review-runner/SKILL.md"
+        - ".claude/skills/review-runner/prompts/reviewer.md"
+        - ".claude/skills/review-runner/prompts/evaluator.md"
+      cost_per_run_eur: 0.08-0.15
+      origin: "Adaptiert von spec-review Skill (~/projects/spec-review)"
+      changes_from_origin:
+        - "Provider: OpenAI/Gemini → Anthropic API (Sonnet)"
+        - "Workflow: Interaktiv → Autonom mit Gate-Entscheidung"
+        - "Output: Change-Liste → Pass/Fail + review-report.md"
+
+    - id: code-review
+      type: rigid
+      used_by: [qa_validator]
+      purpose: |
+        Code-Review gegen Standards, Coverage-Check, Regressions-Erkennung.
+        Sendet Code-Diff an drei Claude-Instanzen (Correctness, Standards,
+        Regression), konsolidiert mit Security-Report, produziert qa-report.md
+        mit Gate-Entscheidung.
+      artifacts:
+        - ".claude/skills/code-review/SKILL.md"
+        - ".claude/skills/code-review/prompts/reviewer-correctness.md"
+        - ".claude/skills/code-review/prompts/reviewer-standards.md"
+        - ".claude/skills/code-review/prompts/reviewer-regression.md"
+        - ".claude/skills/code-review/prompts/evaluator.md"
+      cost_per_run_eur: 0.12-0.20
+      automated_checks:
+        - "pytest exit code"
+        - "coverage threshold (default 80%)"
+        - "linting errors"
+        - "security-report.md cross-reference"
+
+    - id: tdd-red-green
+      type: rigid
+      used_by: [test_designer, implementer]
+      purpose: |
+        TDD-Workflow: Test Designer schreibt fehlschlagende Tests (Red),
+        Implementer macht sie gruen (Green). Skill enforced Reihenfolge
+        und verhindert, dass Tests vor Implementation gruen sind.
+      artifacts:
+        - ".claude/skills/tdd-red-green/SKILL.md"
+      status: to_be_created
+      notes: "Basiert auf Boris' TDD-Präferenz aus userMemories"
+
+    - id: security-checklist
+      type: rigid
+      used_by: [security_reviewer]
+      purpose: |
+        Strukturierte Security-Prüfung: IDOR, RLS, JWT-Flow, Secrets,
+        Input-Validation, DSGVO. Produziert security-report.md mit
+        Findings nach CWE-Klassifikation.
+      artifacts:
+        - ".claude/skills/security-checklist/SKILL.md"
+        - ".claude/skills/security-checklist/prompts/checklist.md"
+      status: to_be_created
+      checks:
+        - idor_on_v1_endpoints
+        - rls_policies_on_new_tables
+        - jwt_flow_es256_hs256
+        - secrets_in_code_or_logs
+        - pydantic_input_validation
+        - dsgvo_personal_data_handling
+
+  skill_execution_pattern: |
+    1. Agent ruft Skill via Skill-Tool auf (Claude Code native)
+    2. Skill-SKILL.md wird in Kontext geladen
+    3. Agent befolgt Skill-Workflow exakt (rigid) oder adaptiert (flexible)
+    4. Output wird als Artefakt nach .pipeline/<feature>/ geschrieben
+    5. Letzte Zeile: STATUS: READY_FOR_<next_agent> oder STATUS: RETURN_TO_<author>
 
 # -----------------------------------------------------------------------------
 # OBSERVABILITY LAYER – BEOBACHTUNGS-AGENTEN
