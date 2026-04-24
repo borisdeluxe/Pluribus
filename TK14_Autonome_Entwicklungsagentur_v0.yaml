@@ -552,16 +552,20 @@ task_intake:
 # -----------------------------------------------------------------------------
 infrastructure:
   host:
-    primary: hetzner_cpx22
-    upgrade_path: hetzner_cpx32_if_needed
+    primary: hetzner_cx43
+    specs: "8 vCPU, 16GB RAM, 160GB SSD, €11.99/mo"
+    ip: "46.225.19.209"
+    hostname: "pluribus-16gb-nbg1-1"
+    domain: "agency.falara.io"
+    upgrade_path: hetzner_cx53_if_needed
     upgrade_triggers:
       - "> 5 Features parallel"
-      - "Grafana + Timescale dauerhaft aktiv"
       - "> 15 parallele Agent-Prozesse"
+      - "RAM-Auslastung dauerhaft >80%"
   os: ubuntu_24_04
   separate_from_prod: true
   no_access_to_prod_supabase: true
-  staging_server_optional: hetzner_cpx11
+  setup_docs: "infrastructure/server-setup.md"
 
   user_separation:
     principle: "ein Linux-User pro Agent-Rolle"
