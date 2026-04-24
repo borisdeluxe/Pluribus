@@ -63,7 +63,7 @@ Lightweight Monitoring-Dashboard für die mutirada Agency. Zeigt live, was die A
                                 ▼
                     ┌────────────────────────────────────────┐
                     │ Dashboard (Static SPA)                 │
-                    │ https://agency.falara.io oder          │
+                    │ https://agency.mutirada.com oder          │
                     │ http://46.224.92.156:8080              │
                     │                                        │
                     │ - HTML/CSS/JS (kein Framework nötig)   │
@@ -309,7 +309,7 @@ Caddy oder nginx auf Port 443
 └── /* → /opt/agency/monitor/static/
 ```
 
-**Domain:** `agency.falara.io` (A-Record auf CAX31 IP)
+**Domain:** `agency.mutirada.com` (A-Record auf CAX31 IP)
 
 ### Option B: Auf Falara-Prod-Server
 

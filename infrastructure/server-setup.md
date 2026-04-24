@@ -78,7 +78,7 @@ Stored in `/opt/agency/.env`:
 
 ## Pending
 
-- [ ] DNS: agency.falara.io → 46.225.19.209
+- [ ] DNS: agency.mutirada.com → 46.225.19.209
 - [ ] Add SSH key to GitHub as deploy key
 - [ ] systemd services (orchestrator, monitor-api)
 - [ ] Clone falara repo

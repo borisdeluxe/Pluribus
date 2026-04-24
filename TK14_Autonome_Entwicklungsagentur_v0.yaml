@@ -556,7 +556,7 @@ infrastructure:
     specs: "8 vCPU, 16GB RAM, 160GB SSD, €11.99/mo"
     ip: "46.225.19.209"
     hostname: "mutirada-16gb-nbg1-1"
-    domain: "agency.falara.io"
+    domain: "agency.mutirada.com"
     upgrade_path: hetzner_cx53_if_needed
     upgrade_triggers:
       - "> 5 Features parallel"
@@ -606,7 +606,7 @@ infrastructure:
       - budget_consumption
       - recent_events_feed
     auth: "Single secret (X-Agency-Secret Header, localStorage)"
-    hosting: "Caddy auf CAX31, agency.falara.io"
+    hosting: "Caddy auf CAX31, agency.mutirada.com"
     effort_hours: 10
 
 # -----------------------------------------------------------------------------
