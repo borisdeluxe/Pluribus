@@ -75,18 +75,11 @@ Stored in `/opt/agency/.env`:
 - [x] Claude CLI (v2.1.119)
 - [x] Firewall (ufw: 22, 80, 443)
 - [x] SSH key for GitHub (agency@mutirada)
+- [x] DNS: agency.mutirada.com → 46.225.19.209
+- [x] Clone falara repo (bare: /opt/agency/repos/falara.git, 3.9MB)
+- [x] Clone falara-frontend repo (bare: /opt/agency/repos/falara-frontend.git, 4.7MB)
 
 ## Pending
 
-- [ ] DNS: agency.mutirada.com → 46.225.19.209
-- [ ] Add SSH key to GitHub as deploy key
+- [ ] HTTPS certificate (auto via Caddy after DNS propagation)
 - [ ] systemd services (orchestrator, monitor-api)
-- [ ] Clone falara repo
-
-## SSH Key for GitHub
-
-```
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKwPT0Kc9kstBh887hmDJdOCVb6Vw8KT+hJe6iHOnZQC agency@mutirada
-```
-
-Add this as **deploy key** to `borisdeluxe/falara` (read-only) or as SSH key to your GitHub account.
