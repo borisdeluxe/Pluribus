@@ -110,19 +110,22 @@ class Orchestrator:
         input_file = feature_pipeline / "input.md"
         output_path = feature_pipeline / output_file
 
+        # Read input content for prompt
+        input_content = ""
+        if input_file.exists():
+            input_content = input_file.read_text().replace("'", "'\\''")
+
         # Claude Code invocation:
-        # --agent loads from /opt/agency/.claude/agents/<agent>.md
+        # --agent loads from ~/.claude/agents/<agent>.md
         # -p for non-interactive print mode
         # --dangerously-skip-permissions for automation
-        # Read prompt from input.md file
         claude_cmd = (
             f"cd {repo_dir} && "
-            f"ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY "
             f"claude --agent {agent} -p "
             f"--dangerously-skip-permissions "
-            f"\"$(cat {input_file})\" "
+            f"'{input_content}' "
             f"> {output_path} 2>&1; "
-            f"echo 'Agent {agent} completed' >> {output_path}"
+            f"echo 'STATUS: Agent {agent} completed' >> {output_path}"
         )
 
         cmd = ["tmux", "new-session", "-d", "-s", session_name, claude_cmd]
@@ -241,7 +244,7 @@ def main():
     )
 
     print(f"Connecting to database...")
-    db = psycopg.connect(db_url, row_factory=dict_row)
+    db = psycopg.connect(db_url, row_factory=dict_row, autocommit=True)
     print(f"Connected. Starting orchestrator...")
 
     orch = Orchestrator(db=db)
