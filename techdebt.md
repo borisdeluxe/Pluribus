@@ -130,6 +130,59 @@ Wenn TD-001 (Scanner-Integration) abgeschlossen ist, sollten auch andere Skills 
 
 ---
 
+## TD-004: Generalisierung für Multi-Projekt-Einsatz
+
+**Status:** Offen
+**Erstellt:** 2026-04-25
+**Ziel-Phase:** Nach Falara-Produktivbetrieb
+
+### Kontext
+
+Mutirada ist aktuell auf Falara zugeschnitten:
+- `docs-update` Skill referenziert `falara-api-docs` Repo und `/v1/*` Endpoints
+- TK14 enthält Falara-spezifische Server-IPs, Domains
+- Keine Config-Datei für Projekt-Parameter
+
+### Ziel
+
+```yaml
+# /opt/agency/config.yaml
+project:
+  name: "projekt-name"
+  repo: "github.com/user/repo"
+  docs_repo: "github.com/user/docs"  # optional
+
+endpoints:
+  public: ["/api/*"]
+  internal: ["/admin/*", "/internal/*"]
+
+budget:
+  per_feature_eur: 5.00
+  per_day_eur: 20.00
+  per_week_eur: 100.00
+```
+
+### Änderungen
+
+1. Config-Loader für `config.yaml`
+2. Skills lesen Projekt-Config statt Hardcodes
+3. TK14 Template ohne projekt-spezifische Werte
+4. Docs: "Getting Started für neues Projekt"
+
+### Trigger
+
+- Falara läuft stabil (2-4 Wochen Produktivbetrieb)
+- Bedarf für zweites Projekt
+
+### Aufwand
+
+- Config-System: 2h
+- Skills anpassen: 2h
+- Docs: 1h
+- **Gesamt: ~5h**
+
+---
+
 ## Format für neue Einträge
 
 ```markdown
