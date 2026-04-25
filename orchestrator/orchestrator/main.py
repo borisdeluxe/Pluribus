@@ -104,15 +104,28 @@ class Orchestrator:
         feature_pipeline = self.pipeline_dir / feature_id
         feature_pipeline.mkdir(parents=True, exist_ok=True)
 
-        feature_worktree = self.worktree_dir / feature_id
+        # Use repos/falara as working directory (TODO: create worktree per feature)
+        repo_dir = Path("/opt/agency/repos/falara")
+        output_file = self.AGENT_OUTPUT_ARTIFACTS.get(agent, "output.md")
+        input_file = feature_pipeline / "input.md"
+        output_path = feature_pipeline / output_file
 
-        cmd = [
-            "tmux", "new-session", "-d", "-s", session_name,
-            f"cd {feature_worktree} && "
-            f"claude --profile {agent} "
-            f"--input {feature_pipeline}/input.md "
-            f"--output {feature_pipeline}/{self.AGENT_OUTPUT_ARTIFACTS.get(agent, 'output.md')}"
-        ]
+        # Claude Code invocation:
+        # --agent loads from /opt/agency/.claude/agents/<agent>.md
+        # -p for non-interactive print mode
+        # --dangerously-skip-permissions for automation
+        # Read prompt from input.md file
+        claude_cmd = (
+            f"cd {repo_dir} && "
+            f"ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY "
+            f"claude --agent {agent} -p "
+            f"--dangerously-skip-permissions "
+            f"\"$(cat {input_file})\" "
+            f"> {output_path} 2>&1; "
+            f"echo 'Agent {agent} completed' >> {output_path}"
+        )
+
+        cmd = ["tmux", "new-session", "-d", "-s", session_name, claude_cmd]
 
         subprocess.run(cmd, check=False)
 
