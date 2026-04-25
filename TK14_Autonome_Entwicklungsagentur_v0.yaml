@@ -524,6 +524,20 @@ handoff:
     max_retries_per_agent: 2
     escalation_after_retries: slack_alert_to_boris
 
+  entry_points:
+    feature:
+      start_agent: concept_clarifier
+      description: "Voller Pipeline-Durchlauf für neue Features"
+    review:
+      start_agent: security_reviewer
+      description: "Review-Only für fertigen Code"
+      valid_targets:
+        - file_path
+        - directory_path
+        - pr_number
+        - commit_sha
+      terminal_agent: qa_validator
+
 # -----------------------------------------------------------------------------
 # TASK INTAKE
 # -----------------------------------------------------------------------------
@@ -543,6 +557,27 @@ task_intake:
     mechanism: cli
     command: "agency submit <feature-name>"
     use_case: local_testing_from_macbook
+
+  review_only:
+    mechanism: cli_or_webhook
+    purpose: "Gezielter Review von fertigem Code ohne Feature-Pipeline"
+    commands:
+      - "agency review <path|PR#|commit>"
+      - "agency review --pr 42"
+      - "agency review src/api/endpoints/"
+    github_trigger_label: "review:requested"
+    entry_point: security_reviewer
+    agent_sequence: [security_reviewer, qa_validator]
+    skipped_agents: [concept_clarifier, architect_planner, test_designer, implementer]
+    output:
+      - ".pipeline/review-<id>/security-report.md"
+      - ".pipeline/review-<id>/qa-report.md"
+    use_cases:
+      - "Human-geschriebener Code vor Merge"
+      - "Legacy-Code Audit"
+      - "Dependency-Update Review"
+      - "Externer Contributor PR"
+    budget: "Zählt gegen daily/weekly Budget, kein eigenes Feature-Budget"
 
   granularity_recommendation: per_issue_immediate
   open_for_decision_id: task_intake_granularity
