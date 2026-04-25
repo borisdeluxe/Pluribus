@@ -26,9 +26,18 @@ class MockDB:
         self._queries = []
         self._results = {}
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
     def execute(self, query, params=None):
         self._queries.append((query, params))
         return MockCursor(self._results.get(query.strip()[:50], []))
+
+    def commit(self):
+        pass
 
     def set_result(self, query_prefix, results):
         """Set expected results for queries starting with prefix."""
