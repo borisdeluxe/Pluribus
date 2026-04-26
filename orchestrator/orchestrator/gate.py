@@ -1,4 +1,5 @@
 """Gate validation - checks artifact status lines and enforces handoff rules."""
+import json
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -57,7 +58,6 @@ class GateValidator:
 
     def __init__(self, db):
         self.db = db
-        self._retry_counts: dict[tuple[str, str], int] = {}
 
     def _parse_status_line(self, artifact: str) -> Optional[str]:
         """Extract STATUS line from artifact."""
@@ -159,14 +159,41 @@ class GateValidator:
 
         return False
 
+    def _get_task_data(self, feature_id: str) -> dict:
+        """Get task data JSONB from database."""
+        result = self.db.execute(
+            "SELECT data FROM agency_tasks WHERE feature_id = %s",
+            (feature_id,)
+        ).fetchone()
+        if result is None or result.get("data") is None:
+            return {}
+        data = result["data"]
+        # Handle both dict (from real DB) and string (from mock)
+        if isinstance(data, str):
+            return json.loads(data)
+        return data
+
+    def _set_task_data(self, feature_id: str, data: dict) -> None:
+        """Update task data JSONB in database."""
+        self.db.execute(
+            "UPDATE agency_tasks SET data = %s, updated_at = NOW() WHERE feature_id = %s",
+            (json.dumps(data), feature_id)
+        )
+        self.db.commit()
+
     def increment_retry(self, feature_id: str, agent: str) -> None:
-        """Increment retry count for feature/agent pair."""
-        key = (feature_id, agent)
-        self._retry_counts[key] = self._retry_counts.get(key, 0) + 1
+        """Increment retry count for feature/agent pair (persisted to database)."""
+        data = self._get_task_data(feature_id)
+        retry_counts = data.get("retry_counts", {})
+        retry_counts[agent] = retry_counts.get(agent, 0) + 1
+        data["retry_counts"] = retry_counts
+        self._set_task_data(feature_id, data)
 
     def get_retry_count(self, feature_id: str, agent: str) -> int:
-        """Get current retry count for feature/agent pair."""
-        return self._retry_counts.get((feature_id, agent), 0)
+        """Get current retry count for feature/agent pair (from database)."""
+        data = self._get_task_data(feature_id)
+        retry_counts = data.get("retry_counts", {})
+        return retry_counts.get(agent, 0)
 
     def check_retry_limit(
         self, feature_id: str, agent: str, max_retries: int = 2

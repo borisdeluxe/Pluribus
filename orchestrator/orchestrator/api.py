@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -38,9 +39,10 @@ def verify_secret(x_agency_secret: str = Header(None)):
 
 
 def generate_feature_id(prefix: str = "API") -> str:
-    """Generate unique feature ID."""
+    """Generate unique feature ID with timestamp and short UUID suffix."""
     timestamp = datetime.now().strftime('%H%M%S')
-    return f"{prefix}-{timestamp}"
+    suffix = uuid.uuid4().hex[:4]
+    return f"{prefix}-{timestamp}-{suffix}"
 
 
 def validate_feature_id(value: Optional[str]) -> Optional[str]:
@@ -64,6 +66,8 @@ class TaskSubmit(BaseModel):
     body: str = ""
     feature_id: Optional[str] = None
     priority: int = 0
+    repo: str = "falara"  # Target repo name (e.g., "falara", "eurotext-web")
+    github_repo: Optional[str] = None  # Full GitHub repo (e.g., "borisdeluxe/falara")
 
     @field_validator('feature_id')
     @classmethod
@@ -116,7 +120,12 @@ def submit_task(task: TaskSubmit, _: bool = Depends(verify_secret)):
     input_file.write_text(input_content)
 
     # Insert into database
-    data = json.dumps({'title': task.title, 'body': task.body})
+    data = json.dumps({
+        'title': task.title,
+        'body': task.body,
+        'repo': task.repo,
+        'github_repo': task.github_repo or f"borisdeluxe/{task.repo}",
+    })
 
     with get_db() as conn:
         conn.execute(

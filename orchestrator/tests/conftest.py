@@ -85,18 +85,28 @@ class InMemoryDB:
         return MockCursor([])
 
     def _handle_insert(self, query, params):
+        import json
         if params:
+            # Check if data column is included (4 params with data)
+            data_value = None
+            if len(params) > 3 and isinstance(params[3], str):
+                try:
+                    data_value = json.loads(params[3])
+                except (json.JSONDecodeError, TypeError):
+                    data_value = None
+
             task = {
                 'id': self._id_counter,
                 'feature_id': params[0] if len(params) > 0 else f'TASK-{self._id_counter}',
                 'source': params[1] if len(params) > 1 else 'test',
-                'status': 'pending',
+                'status': params[2] if len(params) > 2 else 'pending',
                 'cost_eur': 0.0,
                 'current_agent': None,
                 'started_at': None,
                 'completed_at': None,
                 'error': None,
                 'created_at': 'NOW()',
+                'data': data_value,
             }
             self._tasks[self._id_counter] = task
             self._id_counter += 1
@@ -182,6 +192,17 @@ class InMemoryDB:
             if "cost_eur" in query_lower and "status" not in query_lower:
                 amount = params[0] if len(params) > 0 else 0
                 self._tasks[task_id]['cost_eur'] += float(amount)
+
+            # Handle data JSONB updates (for retry counts)
+            if "data =" in query_lower or "data=" in query_lower:
+                import json
+                for p in params:
+                    if isinstance(p, str) and p.startswith('{'):
+                        try:
+                            self._tasks[task_id]['data'] = json.loads(p)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                        break
 
             if "current_agent" in query_lower:
                 for p in params:

@@ -16,7 +16,7 @@ class TestOrchestratorInit:
             db=mock_db,
             pipeline_dir=tmp_path / ".pipeline",
             worktree_dir=tmp_path / "worktrees",
-            repo_dir=tmp_path / "repo",
+            repos_dir=tmp_path / "repos",
         )
 
         assert orch.task_queue is not None
@@ -30,7 +30,7 @@ class TestOrchestratorInit:
             db=mock_db,
             pipeline_dir=pipeline_dir,
             worktree_dir=tmp_path / "worktrees",
-            repo_dir=tmp_path / "repo",
+            repos_dir=tmp_path / "repos",
         )
 
         assert pipeline_dir.exists()
@@ -198,16 +198,16 @@ class TestGateEnforcement:
                 tmux_session="FAL-47-impl",
             )
         }
-        orchestrator.gate._retry_counts = {("FAL-47", "implementer"): 2}
-
-        with patch.object(orchestrator, 'check_session_status', return_value="completed"):
-            with patch.object(orchestrator.gate, 'validate_artifact_file') as mock_gate:
-                mock_gate.return_value = GateResult(
-                    status=GateStatus.RETURN,
-                    return_to="implementer",
-                )
-                with patch.object(orchestrator, 'notify_escalation') as mock_notify:
-                    orchestrator.check_active_sessions()
+        # Mock retry count to simulate max retries reached (now database-backed)
+        with patch.object(orchestrator.gate, 'get_retry_count', return_value=2):
+            with patch.object(orchestrator, 'check_session_status', return_value="completed"):
+                with patch.object(orchestrator.gate, 'validate_artifact_file') as mock_gate:
+                    mock_gate.return_value = GateResult(
+                        status=GateStatus.RETURN,
+                        return_to="implementer",
+                    )
+                    with patch.object(orchestrator, 'notify_escalation') as mock_notify:
+                        orchestrator.check_active_sessions()
 
         mock_notify.assert_called_once()
 
@@ -237,6 +237,80 @@ class TestCostTracking:
                         orchestrator.check_active_sessions()
 
         orchestrator.task_queue.add_cost.assert_called_with(1, 0.12)
+
+
+class TestRealCostExtraction:
+    """Orchestrator should extract real costs from Claude CLI JSON output."""
+
+    def test_extract_cost_from_json_output(self, orchestrator, tmp_path):
+        """Should parse total_cost_usd from Claude CLI JSON output."""
+        # Create a metadata file with JSON output from Claude CLI
+        feature_dir = tmp_path / ".pipeline" / "FAL-47"
+        feature_dir.mkdir(parents=True)
+
+        metadata_file = feature_dir / "concept_clarifier.meta.json"
+        metadata_file.write_text('{"total_cost_usd": 0.25, "duration_ms": 5000}')
+
+        cost = orchestrator.get_session_cost("FAL-47-concept", feature_id="FAL-47", agent="concept_clarifier")
+        assert cost == 0.25
+
+    def test_extract_cost_with_full_json_structure(self, orchestrator, tmp_path):
+        """Should parse cost from full Claude CLI JSON response."""
+        feature_dir = tmp_path / ".pipeline" / "FAL-47"
+        feature_dir.mkdir(parents=True)
+
+        # Full JSON response as Claude CLI outputs it
+        json_output = '''{
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "duration_ms": 3032,
+            "total_cost_usd": 0.15456375,
+            "usage": {
+                "input_tokens": 9,
+                "output_tokens": 48
+            },
+            "result": "Hello."
+        }'''
+        metadata_file = feature_dir / "concept_clarifier.meta.json"
+        metadata_file.write_text(json_output)
+
+        cost = orchestrator.get_session_cost("FAL-47-concept", feature_id="FAL-47", agent="concept_clarifier")
+        assert abs(cost - 0.15456375) < 0.0001
+
+    def test_fallback_to_zero_when_no_metadata(self, orchestrator, tmp_path):
+        """Should return 0 when metadata file does not exist."""
+        # No metadata file created
+        cost = orchestrator.get_session_cost("FAL-47-concept", feature_id="FAL-47", agent="concept_clarifier")
+        assert cost == 0.0
+
+    def test_fallback_to_zero_on_invalid_json(self, orchestrator, tmp_path):
+        """Should return 0 when metadata file contains invalid JSON."""
+        feature_dir = tmp_path / ".pipeline" / "FAL-47"
+        feature_dir.mkdir(parents=True)
+
+        metadata_file = feature_dir / "concept_clarifier.meta.json"
+        metadata_file.write_text("not valid json {")
+
+        cost = orchestrator.get_session_cost("FAL-47-concept", feature_id="FAL-47", agent="concept_clarifier")
+        assert cost == 0.0
+
+    def test_fallback_to_zero_when_cost_field_missing(self, orchestrator, tmp_path):
+        """Should return 0 when JSON lacks total_cost_usd field."""
+        feature_dir = tmp_path / ".pipeline" / "FAL-47"
+        feature_dir.mkdir(parents=True)
+
+        metadata_file = feature_dir / "concept_clarifier.meta.json"
+        metadata_file.write_text('{"duration_ms": 5000, "result": "test"}')
+
+        cost = orchestrator.get_session_cost("FAL-47-concept", feature_id="FAL-47", agent="concept_clarifier")
+        assert cost == 0.0
+
+    def test_backward_compat_session_name_only(self, orchestrator, tmp_path):
+        """Should support old signature with session_name only (returns 0)."""
+        # Old code calls get_session_cost(session_name) - should not crash
+        cost = orchestrator.get_session_cost("FAL-47-concept")
+        assert cost == 0.0
 
 
 class TestPipelineCompletion:
@@ -274,13 +348,15 @@ def orchestrator(mock_db, tmp_path):
         db=mock_db,
         pipeline_dir=tmp_path / ".pipeline",
         worktree_dir=tmp_path / "worktrees",
-        repo_dir=tmp_path / "repo",
+        repos_dir=tmp_path / "repos",
     )
     orch.task_queue.fail_task = Mock()
     orch.task_queue.complete_task = Mock()
     orch.task_queue.add_cost = Mock()
     orch.task_queue.start_task = Mock()
-    orch.worktree_manager = Mock()
-    orch.worktree_manager.worktree_exists.return_value = True
-    orch.worktree_manager.get_worktree_path.return_value = tmp_path / "repo"
+    # Mock the worktree manager factory
+    mock_wt_manager = Mock()
+    mock_wt_manager.worktree_exists.return_value = True
+    mock_wt_manager.get_worktree_path.return_value = tmp_path / "repos" / "falara"
+    orch.get_worktree_manager = Mock(return_value=mock_wt_manager)
     return orch
