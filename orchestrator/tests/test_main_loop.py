@@ -313,6 +313,80 @@ class TestRealCostExtraction:
         assert cost == 0.0
 
 
+class TestDynamicRepoLookup:
+    """Orchestrator should resolve repo paths from agency_repos table."""
+
+    def test_get_repo_dir_from_db(self, mock_db, tmp_path):
+        """Should return path from agency_repos when found."""
+        mock_db.set_result(
+            "SELECT path FROM agency_repos WHERE name = %s",
+            [{"path": "/opt/agency/repos/my-custom-repo"}],
+        )
+        orch = Orchestrator(
+            db=mock_db,
+            pipeline_dir=tmp_path / ".pipeline",
+            worktree_dir=tmp_path / "worktrees",
+            repos_dir=tmp_path / "repos",
+        )
+        result = orch._get_repo_dir("my-custom-repo")
+        assert result == Path("/opt/agency/repos/my-custom-repo")
+
+    def test_get_repo_dir_fallback_frontend_legacy(self, mock_db, tmp_path):
+        """Should return legacy hardcoded path for 'frontend' when not in DB."""
+        orch = Orchestrator(
+            db=mock_db,
+            pipeline_dir=tmp_path / ".pipeline",
+            worktree_dir=tmp_path / "worktrees",
+            repos_dir=tmp_path / "repos",
+        )
+        result = orch._get_repo_dir("frontend")
+        assert result == Path("/opt/agency/repos/falara-frontend")
+
+    def test_get_repo_dir_default_fallback(self, mock_db, tmp_path):
+        """Should return repos_dir / repo_name when not in DB and no legacy match."""
+        orch = Orchestrator(
+            db=mock_db,
+            pipeline_dir=tmp_path / ".pipeline",
+            worktree_dir=tmp_path / "worktrees",
+            repos_dir=tmp_path / "repos",
+        )
+        result = orch._get_repo_dir("falara")
+        assert result == tmp_path / "repos" / "falara"
+
+    def test_get_repo_dir_db_error_falls_back(self, tmp_path):
+        """Should fall back to default path when DB raises an exception."""
+        class BrokenDB:
+            def execute(self, *args, **kwargs):
+                raise RuntimeError("DB unavailable")
+
+        orch = Orchestrator(
+            db=BrokenDB(),
+            pipeline_dir=tmp_path / ".pipeline",
+            worktree_dir=tmp_path / "worktrees",
+            repos_dir=tmp_path / "repos",
+        )
+        result = orch._get_repo_dir("falara")
+        assert result == tmp_path / "repos" / "falara"
+
+    def test_worktree_manager_uses_db_path(self, mock_db, tmp_path):
+        """WorktreeManager should be created with the path resolved from DB."""
+        custom_path = tmp_path / "custom-repo"
+        custom_path.mkdir(parents=True)
+
+        mock_db.set_result(
+            "SELECT path FROM agency_repos WHERE name = %s",
+            [{"path": str(custom_path)}],
+        )
+        orch = Orchestrator(
+            db=mock_db,
+            pipeline_dir=tmp_path / ".pipeline",
+            worktree_dir=tmp_path / "worktrees",
+            repos_dir=tmp_path / "repos",
+        )
+        wt_mgr = orch.get_worktree_manager("my-repo", "org/my-repo")
+        assert wt_mgr.repo_dir == custom_path
+
+
 class TestPipelineCompletion:
     """Orchestrator should handle pipeline completion."""
 

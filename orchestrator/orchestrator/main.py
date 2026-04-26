@@ -81,11 +81,36 @@ class Orchestrator:
         self._shutdown_requested = False
         self._kill_sessions_on_shutdown = False
 
+    def _get_repo_dir(self, repo_name: str) -> Path:
+        """Get the repo directory for a given repo name.
+
+        Looks up the path from the agency_repos table first.
+        Falls back to legacy hardcoded paths when not found in DB.
+        """
+        try:
+            row = self.db.execute(
+                "SELECT path FROM agency_repos WHERE name = %s",
+                (repo_name,)
+            ).fetchone()
+
+            if row and row.get("path"):
+                return Path(row["path"])
+
+            # Fallback for legacy names not yet in agency_repos
+            if repo_name == "frontend":
+                return Path("/opt/agency/repos/falara-frontend")
+
+        except Exception as e:
+            print(f"Warning: Could not lookup repo '{repo_name}' in agency_repos: {e}")
+
+        # Default fallback: repos_dir / repo_name
+        return self.repos_dir / repo_name
+
     def get_worktree_manager(self, repo: str, github_repo: str) -> WorktreeManager:
         """Get or create WorktreeManager for a specific repo."""
         if repo not in self._worktree_managers:
             self._worktree_managers[repo] = WorktreeManager(
-                repo_dir=self.repos_dir / repo,
+                repo_dir=self._get_repo_dir(repo),
                 worktree_dir=self.worktree_dir,
                 github_token=self.github_token,
                 github_repo=github_repo,
