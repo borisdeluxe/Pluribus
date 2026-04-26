@@ -114,21 +114,130 @@ class TestGateAgentSequence:
 class TestRetryTracking:
     """Gate should track retries per agent."""
 
-    def test_increment_retry_count(self, gate: GateValidator):
+    def test_increment_retry_count(self, test_db):
         """Should track retry count per feature/agent pair."""
+        test_db.execute(
+            "INSERT INTO agency_tasks (feature_id, source, status) VALUES (%s, %s, %s)",
+            ("FAL-001", "test", "in_progress")
+        )
+        test_db.commit()
+
+        gate = GateValidator(test_db)
         gate.increment_retry("FAL-001", "implementer")
         gate.increment_retry("FAL-001", "implementer")
 
         assert gate.get_retry_count("FAL-001", "implementer") == 2
 
-    def test_max_retries_triggers_escalation(self, gate: GateValidator):
+    def test_max_retries_triggers_escalation(self, test_db):
         """Should indicate escalation needed after max retries."""
+        test_db.execute(
+            "INSERT INTO agency_tasks (feature_id, source, status) VALUES (%s, %s, %s)",
+            ("FAL-001", "test", "in_progress")
+        )
+        test_db.commit()
+
+        gate = GateValidator(test_db)
         gate.increment_retry("FAL-001", "implementer")
         gate.increment_retry("FAL-001", "implementer")
 
         result = gate.check_retry_limit("FAL-001", "implementer", max_retries=2)
 
         assert result.escalate is True
+
+
+class TestRetryPersistence:
+    """Gate should persist retry counts to database, not just in-memory."""
+
+    def test_increment_retry_writes_to_database(self, test_db):
+        """Should write retry count to database on increment."""
+        # Add a task first
+        test_db.execute(
+            "INSERT INTO agency_tasks (feature_id, source, status) VALUES (%s, %s, %s)",
+            ("FAL-101", "test", "in_progress")
+        )
+        test_db.commit()
+
+        gate = GateValidator(test_db)
+        gate.increment_retry("FAL-101", "implementer")
+
+        # Verify it was written to DB by checking the data column
+        result = test_db.execute(
+            "SELECT data FROM agency_tasks WHERE feature_id = %s",
+            ("FAL-101",)
+        ).fetchone()
+
+        assert result is not None
+        assert result["data"] is not None
+        retry_counts = result["data"].get("retry_counts", {})
+        assert retry_counts.get("implementer") == 1
+
+    def test_get_retry_count_reads_from_database(self, test_db):
+        """Should read retry count from database, not in-memory cache."""
+        # Add a task with existing retry counts in data
+        test_db.execute(
+            """INSERT INTO agency_tasks (feature_id, source, status, data)
+               VALUES (%s, %s, %s, %s)""",
+            ("FAL-102", "test", "in_progress", '{"retry_counts": {"implementer": 3}}')
+        )
+        test_db.commit()
+
+        gate = GateValidator(test_db)
+        count = gate.get_retry_count("FAL-102", "implementer")
+
+        assert count == 3
+
+    def test_retry_counts_survive_new_gate_instance(self, test_db):
+        """Retry counts should persist across GateValidator instances."""
+        # Add a task
+        test_db.execute(
+            "INSERT INTO agency_tasks (feature_id, source, status) VALUES (%s, %s, %s)",
+            ("FAL-103", "test", "in_progress")
+        )
+        test_db.commit()
+
+        # First gate instance increments
+        gate1 = GateValidator(test_db)
+        gate1.increment_retry("FAL-103", "security_reviewer")
+        gate1.increment_retry("FAL-103", "security_reviewer")
+
+        # Second gate instance (simulating restart) should see the count
+        gate2 = GateValidator(test_db)
+        count = gate2.get_retry_count("FAL-103", "security_reviewer")
+
+        assert count == 2
+
+    def test_retry_counts_per_agent_isolated(self, test_db):
+        """Retry counts should be tracked separately per agent."""
+        test_db.execute(
+            "INSERT INTO agency_tasks (feature_id, source, status) VALUES (%s, %s, %s)",
+            ("FAL-104", "test", "in_progress")
+        )
+        test_db.commit()
+
+        gate = GateValidator(test_db)
+        gate.increment_retry("FAL-104", "implementer")
+        gate.increment_retry("FAL-104", "implementer")
+        gate.increment_retry("FAL-104", "security_reviewer")
+
+        assert gate.get_retry_count("FAL-104", "implementer") == 2
+        assert gate.get_retry_count("FAL-104", "security_reviewer") == 1
+        assert gate.get_retry_count("FAL-104", "refactorer") == 0
+
+    def test_check_retry_limit_uses_persisted_count(self, test_db):
+        """check_retry_limit should use persisted count from database."""
+        # Add task with retry count at the limit
+        test_db.execute(
+            """INSERT INTO agency_tasks (feature_id, source, status, data)
+               VALUES (%s, %s, %s, %s)""",
+            ("FAL-105", "test", "in_progress", '{"retry_counts": {"implementer": 2}}')
+        )
+        test_db.commit()
+
+        gate = GateValidator(test_db)
+        result = gate.check_retry_limit("FAL-105", "implementer", max_retries=2)
+
+        assert result.escalate is True
+        assert result.retry_count == 2
 
 
 @pytest.fixture

@@ -3,7 +3,39 @@ import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
-from orchestrator.api import app, API_SECRET
+from orchestrator.api import app, API_SECRET, generate_feature_id
+
+
+class TestGenerateFeatureId:
+    """generate_feature_id should create unique IDs."""
+
+    def test_generates_valid_format(self):
+        """Should generate ID with prefix and timestamp."""
+        feature_id = generate_feature_id()
+        assert feature_id.startswith("API-")
+        # Format: API-HHMMSS-xxxx (suffix for uniqueness)
+        parts = feature_id.split("-")
+        assert len(parts) >= 2
+
+    def test_respects_custom_prefix(self):
+        """Should use provided prefix."""
+        feature_id = generate_feature_id(prefix="REVIEW")
+        assert feature_id.startswith("REVIEW-")
+
+    def test_generates_unique_ids_in_same_second(self):
+        """Should generate unique IDs even when called rapidly."""
+        ids = set()
+        for _ in range(100):
+            ids.add(generate_feature_id())
+        # All 100 IDs should be unique
+        assert len(ids) == 100
+
+    def test_id_is_filesystem_safe(self):
+        """ID should only contain alphanumeric, dash, underscore."""
+        import re
+        for _ in range(10):
+            feature_id = generate_feature_id()
+            assert re.match(r'^[A-Za-z0-9_-]+$', feature_id)
 
 
 class TestTaskSubmitEndpoint:

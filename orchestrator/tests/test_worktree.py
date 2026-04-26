@@ -192,6 +192,11 @@ class TestOrchestratorWorktreeIntegration:
         mock_task.id = 1
         mock_task.feature_id = "FAL-123"
         mock_task.source = "api"
+        mock_task.repo = "falara"
+        mock_task.github_repo = "borisdeluxe/falara"
+
+        mock_wt_manager = MagicMock()
+        mock_wt_manager.worktree_exists.return_value = False
 
         with patch.object(Orchestrator, '__init__', lambda self, **kwargs: None):
             orch = Orchestrator.__new__(Orchestrator)
@@ -203,15 +208,15 @@ class TestOrchestratorWorktreeIntegration:
             orch.gate = MagicMock()
             orch.pipeline_dir = tmp_path / "pipeline"
             orch.worktree_dir = tmp_path / "worktrees"
+            orch.repos_dir = tmp_path / "repos"
             orch._active_sessions = {}
-            orch.worktree_manager = MagicMock()
-            orch.worktree_manager.worktree_exists.return_value = False
+            orch.get_worktree_manager = MagicMock(return_value=mock_wt_manager)
             orch.AGENT_SEQUENCE = ["concept_clarifier"]
 
             with patch.object(orch, 'start_agent_session'):
                 orch.process_one()
 
-        orch.worktree_manager.create_worktree.assert_called_once_with("FAL-123")
+        mock_wt_manager.create_worktree.assert_called_once_with("FAL-123")
 
     def test_handle_session_complete_creates_pr_after_final_agent(self, tmp_path):
         """Should create PR when deploy_runner completes successfully."""
@@ -220,6 +225,8 @@ class TestOrchestratorWorktreeIntegration:
         from unittest.mock import MagicMock, patch
 
         mock_db = MagicMock()
+        mock_wt_manager = MagicMock()
+        mock_wt_manager.create_pr.return_value = {"number": 1, "html_url": "..."}
 
         with patch.object(Orchestrator, '__init__', lambda self, **kwargs: None):
             orch = Orchestrator.__new__(Orchestrator)
@@ -233,16 +240,18 @@ class TestOrchestratorWorktreeIntegration:
             )
             orch.pipeline_dir = tmp_path / "pipeline"
             orch.worktree_dir = tmp_path / "worktrees"
+            orch.repos_dir = tmp_path / "repos"
             orch._active_sessions = {}
-            orch.worktree_manager = MagicMock()
-            orch.worktree_manager.create_pr.return_value = {"number": 1, "html_url": "..."}
+            orch.get_worktree_manager = MagicMock(return_value=mock_wt_manager)
             orch.AGENT_OUTPUT_ARTIFACTS = {"deploy_runner": "deploy-log.md"}
 
             session = AgentSession(
                 feature_id="FAL-123",
                 task_id=1,
                 current_agent="deploy_runner",
-                tmux_session="FAL-123-deploy"
+                tmux_session="FAL-123-deploy",
+                repo="falara",
+                github_repo="borisdeluxe/falara",
             )
 
             (tmp_path / "pipeline" / "FAL-123").mkdir(parents=True)
@@ -251,5 +260,41 @@ class TestOrchestratorWorktreeIntegration:
             with patch.object(orch, 'get_session_cost', return_value=0.10):
                 orch._handle_session_complete(session)
 
-        orch.worktree_manager.create_pr.assert_called_once()
+        mock_wt_manager.create_pr.assert_called_once()
         orch.task_queue.complete_task.assert_called_once()
+
+    def test_process_one_uses_task_repo_for_worktree(self, tmp_path):
+        """Should use task's repo and github_repo when getting worktree manager."""
+        from orchestrator.main import Orchestrator
+        from unittest.mock import MagicMock, patch
+
+        mock_db = MagicMock()
+        mock_task = MagicMock()
+        mock_task.id = 1
+        mock_task.feature_id = "EUR-456"
+        mock_task.source = "api"
+        mock_task.repo = "eurotext-web"
+        mock_task.github_repo = "tentonized/eurotext-web"
+
+        mock_wt_manager = MagicMock()
+        mock_wt_manager.worktree_exists.return_value = False
+
+        with patch.object(Orchestrator, '__init__', lambda self, **kwargs: None):
+            orch = Orchestrator.__new__(Orchestrator)
+            orch.db = mock_db
+            orch.task_queue = MagicMock()
+            orch.task_queue.fetch_pending.return_value = mock_task
+            orch.budget = MagicMock()
+            orch.budget.can_spend.return_value = MagicMock(allowed=True)
+            orch.gate = MagicMock()
+            orch.pipeline_dir = tmp_path / "pipeline"
+            orch.worktree_dir = tmp_path / "worktrees"
+            orch.repos_dir = tmp_path / "repos"
+            orch._active_sessions = {}
+            orch.get_worktree_manager = MagicMock(return_value=mock_wt_manager)
+            orch.AGENT_SEQUENCE = ["concept_clarifier"]
+
+            with patch.object(orch, 'start_agent_session'):
+                orch.process_one()
+
+        orch.get_worktree_manager.assert_called_with("eurotext-web", "tentonized/eurotext-web")

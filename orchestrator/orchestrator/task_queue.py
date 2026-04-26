@@ -1,8 +1,9 @@
 """Task queue operations - manages persistent tasks in Postgres."""
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 class TaskStatus(Enum):
@@ -25,6 +26,17 @@ class Task:
     cost_eur: float = 0.0
     current_agent: Optional[str] = None
     error: Optional[str] = None
+    data: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def repo(self) -> str:
+        """Get target repo name from task data."""
+        return self.data.get("repo", "falara")
+
+    @property
+    def github_repo(self) -> str:
+        """Get GitHub repo from task data."""
+        return self.data.get("github_repo", f"borisdeluxe/{self.repo}")
 
 
 class TaskQueue:
@@ -35,6 +47,12 @@ class TaskQueue:
 
     def _row_to_task(self, row: dict) -> Task:
         """Convert database row to Task object."""
+        data = row.get("data") or {}
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                data = {}
         return Task(
             id=row["id"],
             feature_id=row["feature_id"],
@@ -46,6 +64,7 @@ class TaskQueue:
             cost_eur=float(row.get("cost_eur") or 0),
             current_agent=row.get("current_agent"),
             error=row.get("error"),
+            data=data,
         )
 
     def fetch_pending(self) -> Optional[Task]:

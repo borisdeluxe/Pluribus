@@ -1,6 +1,8 @@
 """Orchestrator main loop - dispatches tasks to agents and enforces gates."""
+import json
 import os
 import shlex
+import signal
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +21,8 @@ class AgentSession:
     task_id: int
     current_agent: str
     tmux_session: str
+    repo: str = "falara"
+    github_repo: str = "borisdeluxe/falara"
     started_at: Optional[str] = None
 
 
@@ -56,9 +60,8 @@ class Orchestrator:
         db,
         pipeline_dir: Optional[Path] = None,
         worktree_dir: Optional[Path] = None,
-        repo_dir: Optional[Path] = None,
+        repos_dir: Optional[Path] = None,
         github_token: Optional[str] = None,
-        github_repo: Optional[str] = None,
     ):
         self.db = db
         self.task_queue = TaskQueue(db)
@@ -67,19 +70,27 @@ class Orchestrator:
 
         self.pipeline_dir = pipeline_dir or Path("/opt/agency/.pipeline")
         self.worktree_dir = worktree_dir or Path("/opt/agency/worktrees")
-        self.repo_dir = repo_dir or Path("/opt/agency/repos/falara")
+        self.repos_dir = repos_dir or Path("/opt/agency/repos")
+        self.github_token = github_token or os.environ.get("GITHUB_TOKEN")
 
         self.pipeline_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_dir.mkdir(parents=True, exist_ok=True)
 
-        self.worktree_manager = WorktreeManager(
-            repo_dir=self.repo_dir,
-            worktree_dir=self.worktree_dir,
-            github_token=github_token or os.environ.get("GITHUB_TOKEN"),
-            github_repo=github_repo or os.environ.get("GITHUB_REPO", "borisdeluxe/falara"),
-        )
-
+        self._worktree_managers: Dict[str, WorktreeManager] = {}
         self._active_sessions: Dict[str, AgentSession] = {}
+        self._shutdown_requested = False
+        self._kill_sessions_on_shutdown = False
+
+    def get_worktree_manager(self, repo: str, github_repo: str) -> WorktreeManager:
+        """Get or create WorktreeManager for a specific repo."""
+        if repo not in self._worktree_managers:
+            self._worktree_managers[repo] = WorktreeManager(
+                repo_dir=self.repos_dir / repo,
+                worktree_dir=self.worktree_dir,
+                github_token=self.github_token,
+                github_repo=github_repo,
+            )
+        return self._worktree_managers[repo]
 
     def process_one(self) -> bool:
         """Process one pending task. Returns True if a task was processed."""
@@ -94,8 +105,9 @@ class Orchestrator:
 
         self.task_queue.start_task(task.id)
 
-        if not self.worktree_manager.worktree_exists(task.feature_id):
-            self.worktree_manager.create_worktree(task.feature_id)
+        worktree_mgr = self.get_worktree_manager(task.repo, task.github_repo)
+        if not worktree_mgr.worktree_exists(task.feature_id):
+            worktree_mgr.create_worktree(task.feature_id)
 
         if task.source == "review":
             first_agent = self.REVIEW_ENTRY_POINT
@@ -106,6 +118,8 @@ class Orchestrator:
             agent=first_agent,
             feature_id=task.feature_id,
             task_id=task.id,
+            repo=task.repo,
+            github_repo=task.github_repo,
         )
 
         return True
@@ -115,6 +129,8 @@ class Orchestrator:
         agent: str,
         feature_id: str,
         task_id: int,
+        repo: str = "falara",
+        github_repo: str = "borisdeluxe/falara",
     ) -> None:
         """Start a new agent session in tmux."""
         session_name = f"{feature_id}-{agent.split('_')[0]}"
@@ -122,9 +138,10 @@ class Orchestrator:
         feature_pipeline = self.pipeline_dir / feature_id
         feature_pipeline.mkdir(parents=True, exist_ok=True)
 
-        repo_dir = self.worktree_manager.get_worktree_path(feature_id)
+        worktree_mgr = self.get_worktree_manager(repo, github_repo)
+        repo_dir = worktree_mgr.get_worktree_path(feature_id)
         if not repo_dir.exists():
-            repo_dir = self.repo_dir
+            repo_dir = self.repos_dir / repo
         output_file = self.AGENT_OUTPUT_ARTIFACTS.get(agent, "output.md")
         input_file = feature_pipeline / "input.md"
         output_path = feature_pipeline / output_file
@@ -134,18 +151,29 @@ class Orchestrator:
         if input_file.exists():
             input_content = input_file.read_text()
 
+        # Metadata file for cost tracking (Claude CLI JSON output)
+        meta_path = feature_pipeline / f"{agent}.meta.json"
+
         # Claude Code invocation:
         # --agent loads from ~/.claude/agents/<agent>.md
         # -p for non-interactive print mode
+        # --output-format json outputs metadata including total_cost_usd
         # --dangerously-skip-permissions for automation
         # Use shlex.quote for shell-safe escaping of user content
+        #
+        # We capture JSON output to meta_path for cost extraction,
+        # then extract the "result" field into the artifact file.
         quoted_content = shlex.quote(input_content)
         claude_cmd = (
             f"cd {repo_dir} && "
             f"claude --agent {agent} -p "
+            f"--output-format json "
             f"--dangerously-skip-permissions "
             f"{quoted_content} "
-            f"> {output_path} 2>&1; "
+            f"> {meta_path} 2>&1; "
+            f"python3 -c \"import json,sys; "
+            f"d=json.load(open('{meta_path}')); "
+            f"print(d.get('result',''))\" > {output_path}; "
             f"echo 'STATUS: Agent {agent} completed' >> {output_path}"
         )
 
@@ -158,6 +186,8 @@ class Orchestrator:
             task_id=task_id,
             current_agent=agent,
             tmux_session=session_name,
+            repo=repo,
+            github_repo=github_repo,
         )
 
         self.task_queue.update_current_agent(task_id, agent)
@@ -186,7 +216,11 @@ class Orchestrator:
 
     def _handle_session_complete(self, session: AgentSession) -> None:
         """Handle a completed agent session."""
-        cost = self.get_session_cost(session.tmux_session)
+        cost = self.get_session_cost(
+            session.tmux_session,
+            feature_id=session.feature_id,
+            agent=session.current_agent,
+        )
         self.task_queue.add_cost(session.task_id, cost)
 
         artifact_path = (
@@ -203,6 +237,8 @@ class Orchestrator:
                     agent=gate_result.next_agent,
                     feature_id=session.feature_id,
                     task_id=session.task_id,
+                    repo=session.repo,
+                    github_repo=session.github_repo,
                 )
             else:
                 self._create_pr_and_complete(session, cost)
@@ -221,6 +257,8 @@ class Orchestrator:
                     agent=gate_result.return_to,
                     feature_id=session.feature_id,
                     task_id=session.task_id,
+                    repo=session.repo,
+                    github_repo=session.github_repo,
                 )
 
         elif gate_result.status == GateStatus.FAILED:
@@ -232,7 +270,8 @@ class Orchestrator:
     def _create_pr_and_complete(self, session: AgentSession, cost: float) -> None:
         """Create PR for completed task and mark as complete."""
         try:
-            pr_result = self.worktree_manager.create_pr(
+            worktree_mgr = self.get_worktree_manager(session.repo, session.github_repo)
+            pr_result = worktree_mgr.create_pr(
                 feature_id=session.feature_id,
                 title=f"feat: {session.feature_id}",
                 body=f"Automated PR from Mutirada pipeline.\n\nFeature ID: {session.feature_id}",
@@ -243,20 +282,79 @@ class Orchestrator:
 
         self.task_queue.complete_task(session.task_id, cost)
 
-    def get_session_cost(self, session_name: str) -> float:
-        """Get API cost from completed session. Placeholder for now."""
-        return 0.10
+    def get_session_cost(
+        self,
+        session_name: str,
+        feature_id: Optional[str] = None,
+        agent: Optional[str] = None,
+    ) -> float:
+        """Get API cost from completed session by reading Claude CLI JSON output.
+
+        Args:
+            session_name: The tmux session name (for backward compat, unused now)
+            feature_id: The feature ID to locate the metadata file
+            agent: The agent name to locate the metadata file
+
+        Returns:
+            The total cost in USD, or 0.0 if metadata is unavailable.
+        """
+        if not feature_id or not agent:
+            # Backward compatibility: no metadata available without feature_id/agent
+            return 0.0
+
+        meta_path = self.pipeline_dir / feature_id / f"{agent}.meta.json"
+
+        if not meta_path.exists():
+            return 0.0
+
+        try:
+            with open(meta_path) as f:
+                data = json.load(f)
+            return float(data.get("total_cost_usd", 0.0))
+        except (json.JSONDecodeError, ValueError, OSError):
+            return 0.0
 
     def notify_escalation(self, session: AgentSession, gate_result) -> None:
         """Send Slack notification for escalation. Placeholder for now."""
         pass
 
+    def _handle_shutdown(self, signum, frame) -> None:
+        """Handle shutdown signals (SIGTERM, SIGINT)."""
+        sig_name = signal.Signals(signum).name
+        print(f"\nReceived {sig_name}, initiating graceful shutdown...")
+        self._shutdown_requested = True
+
+    def _graceful_shutdown(self) -> None:
+        """Perform graceful shutdown: log sessions and optionally kill them."""
+        if not self._active_sessions:
+            print("No active sessions. Shutting down cleanly.")
+            return
+
+        print(f"Active sessions at shutdown ({len(self._active_sessions)}):")
+        for feature_id, session in self._active_sessions.items():
+            print(f"  - {feature_id}: agent={session.current_agent}, tmux={session.tmux_session}")
+
+        if self._kill_sessions_on_shutdown:
+            print("Killing tmux sessions...")
+            for feature_id, session in self._active_sessions.items():
+                subprocess.run(
+                    ["tmux", "kill-session", "-t", session.tmux_session],
+                    capture_output=True,
+                )
+                print(f"  Killed {session.tmux_session}")
+
+        print("Orchestrator shutdown complete.")
+
     def run_loop(self, interval: int = 30) -> None:
         """Main loop - process tasks and check sessions."""
         import time
 
+        # Register signal handlers
+        signal.signal(signal.SIGTERM, self._handle_shutdown)
+        signal.signal(signal.SIGINT, self._handle_shutdown)
+
         print(f"Orchestrator starting, polling every {interval}s...")
-        while True:
+        while not self._shutdown_requested:
             try:
                 processed = self.process_one()
                 if processed:
@@ -265,6 +363,8 @@ class Orchestrator:
             except Exception as e:
                 print(f"Error in loop: {e}")
             time.sleep(interval)
+
+        self._graceful_shutdown()
 
 
 def main():
@@ -284,7 +384,6 @@ def main():
     orch = Orchestrator(
         db=db,
         github_token=os.environ.get("GITHUB_TOKEN"),
-        github_repo=os.environ.get("GITHUB_REPO", "borisdeluxe/falara"),
     )
     orch.run_loop(interval=30)
 
