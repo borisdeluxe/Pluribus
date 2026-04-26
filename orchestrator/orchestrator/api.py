@@ -12,6 +12,8 @@ from pydantic import BaseModel, field_validator
 import psycopg
 from psycopg.rows import dict_row
 
+from .agent_designer import ConversationManager
+
 
 app = FastAPI(title="Mutirada Agency API", version="1.0.0")
 
@@ -24,6 +26,8 @@ if _api_secret is None:
 API_SECRET = _api_secret
 
 FEATURE_ID_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$')
+
+configure_manager = ConversationManager()
 
 
 def get_db():
@@ -259,3 +263,62 @@ def cancel_task(feature_id: str, _: bool = Depends(verify_secret)):
         raise HTTPException(status_code=404, detail="Task not found or already completed")
 
     return {"cancelled": feature_id}
+
+
+class ConfigureRequest(BaseModel):
+    repo_url: str
+
+
+class AnswerRequest(BaseModel):
+    answer: str
+
+
+@app.post("/api/configure")
+def start_configure(request: ConfigureRequest, _: bool = Depends(verify_secret)):
+    """Start repo configuration session."""
+    session = configure_manager.start(
+        repo_url=request.repo_url,
+        chat_id="api",
+        user_id="api",
+        source="api"
+    )
+
+    return {
+        "session_id": session.session_id,
+        "state": session.state.value,
+        "stack": session.stack,
+        "message": session.data.get("error") or "Configuration started",
+    }
+
+
+@app.post("/api/configure/{session_id}/answer")
+def answer_configure(session_id: str, request: AnswerRequest, _: bool = Depends(verify_secret)):
+    """Answer a configuration question."""
+    session = configure_manager.handle_answer("api", "api", request.answer)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "session_id": session.session_id,
+        "state": session.state.value,
+        "data": session.data,
+    }
+
+
+@app.post("/api/configure/{session_id}/cancel")
+def cancel_configure(session_id: str, _: bool = Depends(verify_secret)):
+    """Cancel configuration session."""
+    success = configure_manager.cancel("api", "api")
+
+    if not success:
+        raise HTTPException(status_code=404, detail="No active session")
+
+    return {"state": "CANCELLED"}
+
+
+@app.get("/api/repos")
+def list_repos(_: bool = Depends(verify_secret)):
+    """List registered repos."""
+    # For now, return empty - DB integration in later task
+    return {"repos": []}
