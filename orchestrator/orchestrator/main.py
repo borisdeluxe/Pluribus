@@ -1,4 +1,5 @@
 """Orchestrator main loop - dispatches tasks to agents and enforces gates."""
+import os
 import shlex
 import subprocess
 from dataclasses import dataclass, field
@@ -8,6 +9,7 @@ from typing import Optional, Dict
 from .task_queue import TaskQueue
 from .budget import BudgetEnforcer
 from .gate import GateValidator, GateStatus
+from .worktree import WorktreeManager
 
 
 @dataclass
@@ -54,6 +56,9 @@ class Orchestrator:
         db,
         pipeline_dir: Optional[Path] = None,
         worktree_dir: Optional[Path] = None,
+        repo_dir: Optional[Path] = None,
+        github_token: Optional[str] = None,
+        github_repo: Optional[str] = None,
     ):
         self.db = db
         self.task_queue = TaskQueue(db)
@@ -62,8 +67,17 @@ class Orchestrator:
 
         self.pipeline_dir = pipeline_dir or Path("/opt/agency/.pipeline")
         self.worktree_dir = worktree_dir or Path("/opt/agency/worktrees")
+        self.repo_dir = repo_dir or Path("/opt/agency/repos/falara")
 
         self.pipeline_dir.mkdir(parents=True, exist_ok=True)
+        self.worktree_dir.mkdir(parents=True, exist_ok=True)
+
+        self.worktree_manager = WorktreeManager(
+            repo_dir=self.repo_dir,
+            worktree_dir=self.worktree_dir,
+            github_token=github_token or os.environ.get("GITHUB_TOKEN"),
+            github_repo=github_repo or os.environ.get("GITHUB_REPO", "borisdeluxe/falara"),
+        )
 
         self._active_sessions: Dict[str, AgentSession] = {}
 
@@ -79,6 +93,9 @@ class Orchestrator:
             return True
 
         self.task_queue.start_task(task.id)
+
+        if not self.worktree_manager.worktree_exists(task.feature_id):
+            self.worktree_manager.create_worktree(task.feature_id)
 
         if task.source == "review":
             first_agent = self.REVIEW_ENTRY_POINT
@@ -105,8 +122,9 @@ class Orchestrator:
         feature_pipeline = self.pipeline_dir / feature_id
         feature_pipeline.mkdir(parents=True, exist_ok=True)
 
-        # Use repos/falara as working directory (TODO: create worktree per feature)
-        repo_dir = Path("/opt/agency/repos/falara")
+        repo_dir = self.worktree_manager.get_worktree_path(feature_id)
+        if not repo_dir.exists():
+            repo_dir = self.repo_dir
         output_file = self.AGENT_OUTPUT_ARTIFACTS.get(agent, "output.md")
         input_file = feature_pipeline / "input.md"
         output_path = feature_pipeline / output_file
@@ -187,7 +205,7 @@ class Orchestrator:
                     task_id=session.task_id,
                 )
             else:
-                self.task_queue.complete_task(session.task_id, cost)
+                self._create_pr_and_complete(session, cost)
 
         elif gate_result.status == GateStatus.RETURN:
             retry_check = self.gate.check_retry_limit(
@@ -210,6 +228,20 @@ class Orchestrator:
 
         elif gate_result.status == GateStatus.BLOCKED:
             self.notify_escalation(session, gate_result)
+
+    def _create_pr_and_complete(self, session: AgentSession, cost: float) -> None:
+        """Create PR for completed task and mark as complete."""
+        try:
+            pr_result = self.worktree_manager.create_pr(
+                feature_id=session.feature_id,
+                title=f"feat: {session.feature_id}",
+                body=f"Automated PR from Mutirada pipeline.\n\nFeature ID: {session.feature_id}",
+            )
+            print(f"PR created: {pr_result.get('html_url', 'unknown')}")
+        except Exception as e:
+            print(f"Warning: Failed to create PR for {session.feature_id}: {e}")
+
+        self.task_queue.complete_task(session.task_id, cost)
 
     def get_session_cost(self, session_name: str) -> float:
         """Get API cost from completed session. Placeholder for now."""
@@ -237,7 +269,6 @@ class Orchestrator:
 
 def main():
     """Entry point for orchestrator service."""
-    import os
     import psycopg
     from psycopg.rows import dict_row
 
@@ -250,7 +281,11 @@ def main():
     db = psycopg.connect(db_url, row_factory=dict_row, autocommit=True)
     print(f"Connected. Starting orchestrator...")
 
-    orch = Orchestrator(db=db)
+    orch = Orchestrator(
+        db=db,
+        github_token=os.environ.get("GITHUB_TOKEN"),
+        github_repo=os.environ.get("GITHUB_REPO", "borisdeluxe/falara"),
+    )
     orch.run_loop(interval=30)
 
 

@@ -12,7 +12,12 @@ class TestOrchestratorInit:
 
     def test_init_with_dependencies(self, mock_db, tmp_path):
         """Should accept db connection and create internal components."""
-        orch = Orchestrator(db=mock_db, pipeline_dir=tmp_path / ".pipeline")
+        orch = Orchestrator(
+            db=mock_db,
+            pipeline_dir=tmp_path / ".pipeline",
+            worktree_dir=tmp_path / "worktrees",
+            repo_dir=tmp_path / "repo",
+        )
 
         assert orch.task_queue is not None
         assert orch.budget is not None
@@ -21,7 +26,12 @@ class TestOrchestratorInit:
     def test_init_creates_pipeline_dir(self, mock_db, tmp_path):
         """Should create .pipeline directory if missing."""
         pipeline_dir = tmp_path / ".pipeline"
-        orch = Orchestrator(db=mock_db, pipeline_dir=pipeline_dir)
+        orch = Orchestrator(
+            db=mock_db,
+            pipeline_dir=pipeline_dir,
+            worktree_dir=tmp_path / "worktrees",
+            repo_dir=tmp_path / "repo",
+        )
 
         assert pipeline_dir.exists()
 
@@ -260,9 +270,17 @@ class TestPipelineCompletion:
 @pytest.fixture
 def orchestrator(mock_db, tmp_path):
     """Orchestrator with mocked dependencies."""
-    orch = Orchestrator(db=mock_db, pipeline_dir=tmp_path / ".pipeline")
+    orch = Orchestrator(
+        db=mock_db,
+        pipeline_dir=tmp_path / ".pipeline",
+        worktree_dir=tmp_path / "worktrees",
+        repo_dir=tmp_path / "repo",
+    )
     orch.task_queue.fail_task = Mock()
     orch.task_queue.complete_task = Mock()
     orch.task_queue.add_cost = Mock()
     orch.task_queue.start_task = Mock()
+    orch.worktree_manager = Mock()
+    orch.worktree_manager.worktree_exists.return_value = True
+    orch.worktree_manager.get_worktree_path.return_value = tmp_path / "repo"
     return orch
