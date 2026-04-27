@@ -15,8 +15,19 @@ from .agent_designer import ConversationManager, SessionState
 
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
+DEFAULT_GITHUB_ORG = "borisdeluxe"
 
 app = FastAPI(title="Mutirada Slack Bot", version="1.0.0")
+
+
+def expand_repo_url(repo_input: str) -> str:
+    """Expand short repo name to full GitHub URL."""
+    repo_input = repo_input.strip()
+    if repo_input.startswith(("http://", "https://")):
+        return repo_input
+    if "/" in repo_input:
+        return f"https://github.com/{repo_input}"
+    return f"https://github.com/{DEFAULT_GITHUB_ORG}/{repo_input}"
 
 configure_manager = ConversationManager()
 
@@ -96,8 +107,10 @@ def handle_help_configure(channel: str) -> None:
     """Handle /help configure."""
     send_slack_message(channel, """*Agent Designer Hilfe*
 
-`/configure <repo-url>` — Pipeline für neues Repo einrichten
-`/cancel` — Aktive Konfiguration abbrechen
+`configure falara-shopify` — Repo-Name (wird zu github.com/borisdeluxe/...)
+`configure user/repo` — User/Repo Format
+`configure https://...` — Volle URL
+`cancel` — Aktive Konfiguration abbrechen
 
 *Unterstützte Stacks:*
 • FastAPI (Python)
@@ -197,9 +210,9 @@ async def slack_events(request: Request):
         text = event.get("text", "").lower()
 
         if "configure " in text:
-            match = re.search(r'configure\s+(https?://\S+)', event.get("text", ""))
+            match = re.search(r'configure\s+(\S+)', event.get("text", ""))
             if match:
-                repo_url = match.group(1)
+                repo_url = expand_repo_url(match.group(1))
                 handle_configure_command(repo_url, event["channel"], event["user"])
                 return {"ok": True}
 

@@ -10,8 +10,19 @@ from .agent_designer import ConversationManager, SessionState
 
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+DEFAULT_GITHUB_ORG = "borisdeluxe"
 
 app = FastAPI(title="Mutirada Telegram Bot", version="1.0.0")
+
+
+def expand_repo_url(repo_input: str) -> str:
+    """Expand short repo name to full GitHub URL."""
+    repo_input = repo_input.strip()
+    if repo_input.startswith(("http://", "https://")):
+        return repo_input
+    if "/" in repo_input:
+        return f"https://github.com/{repo_input}"
+    return f"https://github.com/{DEFAULT_GITHUB_ORG}/{repo_input}"
 
 configure_manager = ConversationManager()
 
@@ -115,7 +126,9 @@ Schreib einfach was du brauchst:
 `Mobile Layout im Dashboard fixen`
 
 *Repo konfigurieren:*
-`/configure <repo-url>`
+`/configure falara-shopify`
+`/configure user/repo`
+`/configure https://github.com/...`
 `/cancel` - Konfiguration abbrechen
 
 *Status:*
@@ -147,9 +160,10 @@ def handle_telegram_message(message: dict) -> None:
 
         if cmd == "/configure":
             if arg:
-                handle_configure_command_tg(arg.strip(), chat_id, user_id)
+                repo_url = expand_repo_url(arg)
+                handle_configure_command_tg(repo_url, chat_id, user_id)
             else:
-                send_telegram_message("Usage: /configure <repo-url>", chat_id)
+                send_telegram_message("Usage: /configure <repo-name oder url>", chat_id)
             return
 
         if cmd == "/cancel":
