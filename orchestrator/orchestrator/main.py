@@ -12,6 +12,7 @@ from .task_queue import TaskQueue
 from .budget import BudgetEnforcer
 from .gate import GateValidator, GateStatus
 from .worktree import WorktreeManager
+from .context import build_agent_context
 
 
 @dataclass
@@ -171,10 +172,12 @@ class Orchestrator:
         input_file = feature_pipeline / "input.md"
         output_path = feature_pipeline / output_file
 
-        # Read input content for prompt
-        input_content = ""
-        if input_file.exists():
-            input_content = input_file.read_text()
+        # Build context with all prior artifacts for this agent
+        agent_context = build_agent_context(
+            pipeline_dir=self.pipeline_dir,
+            feature_id=feature_id,
+            agent=agent,
+        )
 
         # Metadata file for cost tracking (Claude CLI JSON output)
         meta_path = feature_pipeline / f"{agent}.meta.json"
@@ -188,7 +191,7 @@ class Orchestrator:
         #
         # We capture JSON output to meta_path for cost extraction,
         # then extract the "result" field into the artifact file.
-        quoted_content = shlex.quote(input_content)
+        quoted_content = shlex.quote(agent_context)
         claude_cmd = (
             f"cd {repo_dir} && "
             f"claude --agent {agent} -p "

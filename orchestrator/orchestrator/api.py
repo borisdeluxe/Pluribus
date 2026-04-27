@@ -64,13 +64,44 @@ def validate_feature_id(value: Optional[str]) -> Optional[str]:
     return value
 
 
+REPO_ALIASES = {
+    "frontend": "falara-frontend",
+    "falara-frontend": "falara-frontend",
+    "backend": "falara",
+    "falara": "falara",
+    "shopify": "falara-shopify",
+    "falara-shopify": "falara-shopify",
+    "shopware": "falara-shopware",
+    "falara-shopware": "falara-shopware",
+}
+
+
+def extract_repo_from_text(text: str) -> Optional[str]:
+    """Extract repo name from task description."""
+    import re
+    # Match "Ziel-Repo: frontend" or "Repo: falara-frontend" etc.
+    match = re.search(r'(?:ziel-?)?repo[:\s]+(\S+)', text, re.IGNORECASE)
+    if match:
+        repo_name = match.group(1).strip().rstrip('.,;')
+        return REPO_ALIASES.get(repo_name.lower(), repo_name)
+    # Also check for keywords
+    text_lower = text.lower()
+    if 'frontend' in text_lower and 'backend' not in text_lower:
+        return 'falara-frontend'
+    if 'shopify' in text_lower:
+        return 'falara-shopify'
+    if 'shopware' in text_lower:
+        return 'falara-shopware'
+    return None
+
+
 class TaskSubmit(BaseModel):
     """Task submission request."""
     title: str
     body: str = ""
     feature_id: Optional[str] = None
     priority: int = 0
-    repo: str = "falara"  # Target repo name (e.g., "falara", "eurotext-web")
+    repo: Optional[str] = None  # Target repo name - auto-detected if not provided
     github_repo: Optional[str] = None  # Full GitHub repo (e.g., "borisdeluxe/falara")
 
     @field_validator('feature_id')
@@ -103,6 +134,12 @@ def submit_task(task: TaskSubmit, _: bool = Depends(verify_secret)):
     """Submit a new feature task to the pipeline."""
     feature_id = task.feature_id or generate_feature_id()
 
+    # Auto-detect repo from description if not provided
+    repo = task.repo
+    if not repo:
+        full_text = f"{task.title} {task.body}"
+        repo = extract_repo_from_text(full_text) or "falara"
+
     # Create pipeline directory
     feature_dir = PIPELINE_DIR / feature_id
     feature_dir.mkdir(parents=True, exist_ok=True)
@@ -118,6 +155,7 @@ def submit_task(task: TaskSubmit, _: bool = Depends(verify_secret)):
 
 - Feature ID: {feature_id}
 - Source: API
+- Repo: {repo}
 - Created: {datetime.now().isoformat()}
 """
     input_file = feature_dir / 'input.md'
@@ -127,8 +165,8 @@ def submit_task(task: TaskSubmit, _: bool = Depends(verify_secret)):
     data = json.dumps({
         'title': task.title,
         'body': task.body,
-        'repo': task.repo,
-        'github_repo': task.github_repo or f"borisdeluxe/{task.repo}",
+        'repo': repo,
+        'github_repo': task.github_repo or f"borisdeluxe/{repo}",
     })
 
     with get_db() as conn:
