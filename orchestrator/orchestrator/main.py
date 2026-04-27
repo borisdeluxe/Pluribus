@@ -42,7 +42,17 @@ class Orchestrator:
         "deploy_runner",
     ]
 
-    REVIEW_ENTRY_POINT = "security_reviewer"
+    # Job type entry points - where each job type starts in the pipeline
+    JOB_ENTRY_POINTS = {
+        "feature": "concept_clarifier",    # Full pipeline (1→9)
+        "review": "security_reviewer",      # Security + Refactor + QA (5→9)
+        "security": "security_reviewer",    # Alias for review
+        "refactor": "refactorer",           # Refactor + QA (6→9)
+        "optimize": "refactorer",           # Alias for refactor
+        "qa": "qa_validator",               # QA only (7→9)
+        "test": "qa_validator",             # Alias for qa
+        "docs": "docs_updater",             # Docs only (8→9)
+    }
 
     AGENT_OUTPUT_ARTIFACTS = {
         "concept_clarifier": "tk-draft.md",
@@ -135,8 +145,12 @@ class Orchestrator:
         if not worktree_mgr.worktree_exists(task.feature_id):
             worktree_mgr.create_worktree(task.feature_id)
 
-        if task.source == "review":
-            first_agent = self.REVIEW_ENTRY_POINT
+        # Determine entry point based on job_type or source
+        job_type = task.data.get("job_type", "").lower()
+        if job_type and job_type in self.JOB_ENTRY_POINTS:
+            first_agent = self.JOB_ENTRY_POINTS[job_type]
+        elif task.source == "review":
+            first_agent = self.JOB_ENTRY_POINTS["review"]
         else:
             first_agent = self.AGENT_SEQUENCE[0]
 

@@ -95,6 +95,33 @@ def extract_repo_from_text(text: str) -> Optional[str]:
     return None
 
 
+JOB_TYPE_KEYWORDS = {
+    "review": ["review", "prüfen", "check", "audit"],
+    "security": ["security", "sicherheit", "vulnerability", "cve"],
+    "refactor": ["refactor", "optimier", "aufräumen", "cleanup", "performance"],
+    "qa": ["test", "qa", "validier", "e2e"],
+    "docs": ["docs", "dokumentation", "readme", "changelog"],
+}
+
+
+def extract_job_type_from_text(text: str) -> Optional[str]:
+    """Extract job type from task description."""
+    import re
+    # Match "Job-Type: review" or "Type: refactor" etc.
+    match = re.search(r'(?:job-?)?type[:\s]+(\S+)', text, re.IGNORECASE)
+    if match:
+        job_type = match.group(1).strip().rstrip('.,;').lower()
+        if job_type in ("feature", "review", "security", "refactor", "optimize", "qa", "test", "docs"):
+            return job_type
+    # Check keywords
+    text_lower = text.lower()
+    for job_type, keywords in JOB_TYPE_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                return job_type
+    return None
+
+
 class TaskSubmit(BaseModel):
     """Task submission request."""
     title: str
@@ -103,6 +130,7 @@ class TaskSubmit(BaseModel):
     priority: int = 0
     repo: Optional[str] = None  # Target repo name - auto-detected if not provided
     github_repo: Optional[str] = None  # Full GitHub repo (e.g., "borisdeluxe/falara")
+    job_type: Optional[str] = None  # feature, review, security, refactor, qa, docs
 
     @field_validator('feature_id')
     @classmethod
@@ -133,12 +161,17 @@ def health():
 def submit_task(task: TaskSubmit, _: bool = Depends(verify_secret)):
     """Submit a new feature task to the pipeline."""
     feature_id = task.feature_id or generate_feature_id()
+    full_text = f"{task.title} {task.body}"
 
     # Auto-detect repo from description if not provided
     repo = task.repo
     if not repo:
-        full_text = f"{task.title} {task.body}"
         repo = extract_repo_from_text(full_text) or "falara"
+
+    # Auto-detect job_type from description if not provided
+    job_type = task.job_type
+    if not job_type:
+        job_type = extract_job_type_from_text(full_text) or "feature"
 
     # Create pipeline directory
     feature_dir = PIPELINE_DIR / feature_id
@@ -156,6 +189,7 @@ def submit_task(task: TaskSubmit, _: bool = Depends(verify_secret)):
 - Feature ID: {feature_id}
 - Source: API
 - Repo: {repo}
+- Job Type: {job_type}
 - Created: {datetime.now().isoformat()}
 """
     input_file = feature_dir / 'input.md'
@@ -167,6 +201,7 @@ def submit_task(task: TaskSubmit, _: bool = Depends(verify_secret)):
         'body': task.body,
         'repo': repo,
         'github_repo': task.github_repo or f"borisdeluxe/{repo}",
+        'job_type': job_type,
     })
 
     with get_db() as conn:
