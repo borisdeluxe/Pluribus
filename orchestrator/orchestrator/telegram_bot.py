@@ -125,17 +125,24 @@ def get_help_text_telegram() -> str:
 Schreib einfach was du brauchst:
 `Mobile Layout im Dashboard fixen`
 
+*Job-Typen:* (auto-erkannt oder explizit)
+• `feature` - Neues Feature (alle 9 Agents)
+• `review` - Security + Refactor + QA
+• `refactor` - Optimierung + QA
+• `qa` - Nur Tests validieren
+• `docs` - Nur Doku aktualisieren
+
+Keywords: "optimieren" → refactor, "security" → review, "test" → qa
+
 *Repo konfigurieren:*
 `/configure falara-shopify`
 `/configure user/repo`
-`/configure https://github.com/...`
-`/cancel` - Konfiguration abbrechen
+`/cancel` - Abbrechen
 
 *Status:*
-`/status` oder `wie weit?`
+`/status`
 
-*Unterstützte Stacks:*
-FastAPI, React, Shopify, Shopware
+*Stacks:* FastAPI, React, Shopify, Shopware
 """
 
 
